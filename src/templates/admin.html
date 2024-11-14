@@ -1,0 +1,263 @@
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Admin - Minecraft Save Explorer</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    </head>
+    <body class="bg-gray-100 min-h-screen p-8">
+        <div id="app" class="max-w-6xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold">Minecraft World Saves</h1> 
+                <form action="/logout" method="POST">
+                    <button type="submit" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                        Logout
+                    </button>
+                </form>
+            </div>
+
+            <!-- Server Status Component -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <div class="flex gap-8">
+                    <!-- Left column - Status Information -->
+                    <div class="flex flex-col items-start space-y-6">
+                        <div>
+                            <div class="text-sm text-gray-500 mb-1">World</div>
+                            <div class="font-semibold">{{ serverStatus.world_name || '---' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500 mb-1">Version</div>
+                            <div class="font-semibold">{{ serverStatus.version || '---' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500 mb-1">Status</div>
+                            <div :class="statusClass">{{ serverStatus.status_description || 'Loading...' }}</div>
+                        </div>
+                    </div>
+            
+                    <!-- Middle column - Buttons -->
+                    <div class="flex flex-col items-center justify-start space-y-4">
+                        <button 
+                            @click="stopServer"
+                            class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-md transition-colors w-full"
+                        >
+                            Stop Server
+                        </button>
+                        <a 
+                            href="/server-console"
+                            class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-md transition-colors text-center w-full"
+                        >
+                            Console
+                        </a>
+                    </div>
+            
+                    <!-- Right column - Console iframe -->
+                    <div class="flex-1">
+                        <iframe 
+                            src="/server-console" 
+                            class="w-full h-96 border border-gray-200 rounded-lg"
+                            scrolling="no"
+                        ></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Worlds Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div v-for="world in worlds" :key="world.name + world.version" class="bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center mb-2">
+                        <h2 class="text-xl font-semibold mb-2">{{ world.name }}</h2>
+                        <button 
+                            @click="openEditModal(world)"
+                            class="ml-3 text-blue-500 hover:text-blue-700"
+                        >
+                            <svg class="h-7 w-7 text-white"  viewBox="0 0 32 32" stroke-width="1.8" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">  <path stroke="none" d="M0 0h24v24H0z"/>  <path d="M9 7 h-3a2 2 0 0 0 -2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2 -2v-3" />  <path d="M9 15h3l8.5 -8.5a1.5 1.5 0 0 0 -3 -3l-8.5 8.5v3" />  <line x1="16" y1="5" x2="19" y2="8" /></svg>
+                        </button>
+                    </div>  
+                    
+                    <p class="text-gray-600 mb-2">Version: {{ world.version }}</p>
+                    <div class="flex space-x-4">
+                        <button 
+                            @click="startServer(world.name + '-' + world.version)"
+                            class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-md transition-colors"
+                        >
+                            Start Server
+                        </button>
+                        <a 
+                            :href="'/worlds/download/' + world.name + '-' + world.version"
+                            class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors inline-block"
+                        >
+                            Download
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Edit World Name Modal -->
+            <div v-if="isEditModalOpen" class="fixed inset-0 bg-black/60 flex items-center justify-center">
+                <div class="bg-white rounded-lg shadow-lg w-96 p-6 relative">
+                    <h3 class="text-xl font-semibold mb-4">Edit World Name</h3>
+                    <form @submit.prevent="renameWorld">
+                        <label class="block mb-2 text-sm font-medium text-gray-700">
+                            Current: {{ currentWorld.name + '-' + currentWorld.version }}
+                        </label>
+                        <input 
+                            v-model="editWorldName" 
+                            type="text" 
+                            class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring focus:ring-blue-300"
+                        >
+                        <div class="mt-4 flex justify-end space-x-2">
+                            <button 
+                                @click="closeEditModal"
+                                type="button"
+                                class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="submit"
+                                class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const { createApp, ref, computed, onMounted } = Vue;
+
+            createApp({
+                setup() {
+                    const serverStatus = ref({
+                        world_name: '',
+                        version: '',
+                        status_description: 'Loading...'
+                    });
+
+                    const isEditModalOpen = ref(false);
+                    const currentWorld = ref(null);
+                    const editWorldName = ref("");
+
+                    const worlds = ref([]);
+
+                    const statusClass = computed(() => {
+                        const description = serverStatus.value.status_description?.toLowerCase() || '';
+                        if (description.includes('running')) {
+                            return 'font-semibold text-green-500';
+                        } else if (description.includes('error')) {
+                            return 'font-semibold text-red-500';
+                        } else {
+                            return 'font-semibold text-yellow-500';
+                        }
+                    });
+
+                    const fetchServerStatus = async () => {
+                        try {
+                            const response = await fetch('/server/status');
+                            const data = await response.json();
+                            serverStatus.value = data;
+                        } catch (error) {
+                            console.error('Failed to fetch status:', error);
+                            serverStatus.value.status_description = 'Error fetching status';
+                        }
+                    };
+
+                    const fetchWorlds = async () => {
+                        console.log("[DEBUG] - refetching worlds")
+                        try {
+                            const response = await fetch('/worlds');
+                            const data = await response.json();
+                            worlds.value = data;
+                            console.log(worlds.value)
+                        } catch (error) {
+                            console.error('Failed to fetch worlds:', error);
+                        }
+                    };
+
+                    const startServer = async (worldName) => {
+                        try {
+                            await fetch(`/server/start/${worldName}`);
+                            fetchServerStatus();
+                        } catch (error) {
+                            console.error('Error starting server:', error);
+                            alert('Error starting server: ' + error);
+                        }
+                    };
+
+                    const stopServer = async () => {
+                        try {
+                            const response = await fetch('/server/stop');
+                            const data = await response.json();
+                            if (data.success) {
+                                fetchServerStatus();
+                            } else {
+                                alert('Failed to stop server: ' + (data.error || 'Unknown error'));
+                            }
+                        } catch (error) {
+                            alert('Error stopping server: ' + error);
+                        }
+                    };
+
+                    
+
+                    const renameWorld = async () => {
+                        try {
+                            const response = await fetch(`/worlds/rename/${currentWorld.value.name + "-" + currentWorld.value.version}`, {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ newName: editWorldName.value }),
+                            });
+                            if (response.ok) {
+                                await fetchWorlds();
+                                closeEditModal();
+                            } else {
+                                console.error('Failed to rename world:', await response.text());
+                            }
+                        } catch (error) {
+                            console.error('Error renaming world:', error);
+                        }
+                    };
+
+                    const openEditModal = (world) => {
+                        currentWorld.value = world;
+                        editWorldName.value = world.name + "-" + world.version;
+                        isEditModalOpen.value = true;
+                    };
+
+                    const closeEditModal = () => {
+                        isEditModalOpen.value = false;
+                        currentWorld.value = null;
+                        editWorldName.value = "";
+                    };
+
+                    onMounted(() => {
+                        fetchServerStatus();
+                        fetchWorlds();
+                        setInterval(fetchServerStatus, 5000);
+                    });
+
+                    return {
+                        serverStatus,
+                        worlds,
+                        statusClass,
+                        isEditModalOpen,
+                        editWorldName,
+                        currentWorld,
+                        startServer,
+                        stopServer,
+                        renameWorld,
+                        openEditModal,
+                        closeEditModal,
+                    };
+                }
+            }).mount('#app');
+        </script>
+    </body>
+    </html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Save Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div id="app" class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">Minecraft World Saves</h1> 
+            <a href="/login" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                Login
+            </a>
+        </div>
+
+        <!-- Server Status Component -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="text-center">
+                    <div class="text-sm text-gray-500 mb-1">World</div>
+                    <div class="font-semibold">{{ serverStatus.world_name || '---' }}</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-sm text-gray-500 mb-1">Version</div>
+                    <div class="font-semibold">{{ serverStatus.version || '---' }}</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-sm text-gray-500 mb-1">Status</div>
+                    <div :class="statusClass">{{ serverStatus.status_description || 'Loading...' }}</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Worlds Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div v-for="world in worlds" :key="world.name + world.version" class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-xl font-semibold mb-2">{{ world.name }}</h2>
+                <p class="text-gray-600 mb-2">Version: {{ world.version }}</p>
+                <div class="flex space-x-4">
+                    <a 
+                        :href="'/worlds/download/' + world.name + '-' + world.version"
+                        class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md transition-colors inline-block"
+                    >
+                        Download
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const serverStatus = ref({
+                    world_name: '',
+                    version: '',
+                    status_description: 'Loading...'
+                });
+                
+                const worlds = ref([]);
+
+                const statusClass = computed(() => {
+                    const description = serverStatus.value.status_description?.toLowerCase() || '';
+                    if (description.includes('running')) {
+                        return 'font-semibold text-green-500';
+                    } else if (description.includes('error')) {
+                        return 'font-semibold text-red-500';
+                    } else {
+                        return 'font-semibold text-yellow-500';
+                    }
+                });
+
+                const fetchServerStatus = async () => {
+                    try {
+                        const response = await fetch('/server/status');
+                        const data = await response.json();
+                        serverStatus.value = data;
+                    } catch (error) {
+                        console.error('Failed to fetch status:', error);
+                        serverStatus.value.status_description = 'Error fetching status';
+                    }
+                };
+
+                const fetchWorlds = async () => {
+                    try {
+                        const response = await fetch('/worlds');
+                        const data = await response.json();
+                        worlds.value = data;
+                    } catch (error) {
+                        console.error('Failed to fetch worlds:', error);
+                    }
+                };
+
+                
+
+                
+
+                onMounted(() => {
+                    fetchServerStatus();
+                    fetchWorlds();
+                    setInterval(fetchServerStatus, 5000);
+                });
+
+                return {
+                    serverStatus,
+                    worlds,
+                    statusClass,
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

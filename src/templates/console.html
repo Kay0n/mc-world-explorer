@@ -1,0 +1,197 @@
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Console - Minecraft Save Explorer</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    </head>
+    <!-- <body class="bg-gray-100 min-h-screen p-8"><div id="app" class="max-w-6xl mx-auto"> -->
+    <body>
+        <div class="bg-white rounded-lg shadow-md" id="app">
+            <div class="p-2 border-b flex justify-between items-center">
+                <h2 class="p-1 text-lg font-semibold flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 17 10 11 4 5"></polyline>
+                        <line x1="12" y1="19" x2="20" y2="19"></line>
+                    </svg>
+                    Server Console
+                </h2>
+                <div class="p-1 flex items-center gap-2">
+                    <span 
+                        :class="[
+                            'inline-block w-3 h-3 rounded-full',
+                            isConnected ? 'bg-green-500' : 'bg-red-500'
+                        ]"
+                    ></span>
+                    <span class="text-sm text-gray-600">
+                        {{ isConnected ? 'Connected' : 'Disconnected' }}
+                    </span>
+                </div>
+            </div>
+            <div class="relative">
+                <div 
+                    ref="consoleOutput"
+                    class="h-64 overflow-y-auto p-4 font-mono text-sm bg-gray-900 text-green-400"
+                >
+                    <template v-if="consoleLines.length">
+                        <div v-for="(line, index) in consoleLines" :key="index" class="whitespace-pre-wrap mb-1">
+                            {{ line }}
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div class="text-gray-500 italic">
+                            Waiting for server output...
+                        </div>
+                    </template>
+                </div>
+            </div>
+            <div class="p-4 border-t">
+                <form @submit.prevent="sendCommand" class="flex gap-2">
+                    <input 
+                        type="text" 
+                        v-model="command"
+                        placeholder="Enter server command..."
+                        class="flex-1 px-4 py-2 border rounded-md font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        :disabled="!isConnected"
+                    >
+                    <button 
+                        type="submit"
+                        class="px-4 py-2 bg-blue-500 text-white rounded-md transition-colors"
+                        :class="isConnected ? 'hover:bg-blue-600' : 'opacity-50 cursor-not-allowed'"
+                        :disabled="!isConnected"
+                    >
+                        Send
+                    </button>
+                </form>
+            </div>
+        </div>
+
+
+        <script>
+        const { createApp, ref, onMounted, onBeforeUnmount, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // ... existing setup code ...
+
+                // Console-specific state
+                const consoleLines = ref([]);
+                const command = ref('');
+                const consoleOutput = ref(null);
+                const eventSource = ref(null);
+                const isConnected = ref(false);
+                const reconnectTimeout = ref(null);
+                const maxReconnectAttempts = 5;
+                let reconnectAttempts = 0;
+
+                const scrollToBottom = async () => {
+                    await nextTick();
+                    if (consoleOutput.value) {
+                        consoleOutput.value.scrollTop = consoleOutput.value.scrollHeight;
+                    }
+                };
+
+                const setupEventSource = () => {
+                    if (eventSource.value) {
+                        eventSource.value.close();
+                    }
+
+                    eventSource.value = new EventSource('/server-console/stream');
+                    
+                    eventSource.value.onopen = () => {
+                        isConnected.value = true;
+                        reconnectAttempts = 0;
+                        if (reconnectTimeout.value) {
+                            clearTimeout(reconnectTimeout.value);
+                            reconnectTimeout.value = null;
+                        }
+                    };
+
+                    eventSource.value.onmessage = async (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.line) {
+                                consoleLines.value.push(data.line);
+                                await scrollToBottom();
+                            }
+                        } catch (error) {
+                            console.error('Error parsing console data:', error);
+                        }
+                    };
+
+                    eventSource.value.onerror = (error) => {
+                        console.error('SSE Error:', error);
+                        isConnected.value = false;
+                        
+                        if (eventSource.value) {
+                            eventSource.value.close();
+                            eventSource.value = null;
+                        }
+
+                        // Attempt to reconnect if we haven't exceeded max attempts
+                        if (reconnectAttempts < maxReconnectAttempts) {
+                            reconnectAttempts++;
+                            reconnectTimeout.value = setTimeout(() => {
+                                setupEventSource();
+                            }, 2000 * reconnectAttempts); // Exponential backoff
+                        }
+                    };
+                };
+
+                const sendCommand = async () => {
+                    if (!command.value.trim() || !isConnected.value) return;
+
+                    try {
+                        const response = await fetch('/server-console/command', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ command: command.value.trim() })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to send command');
+                        }
+
+                        // Add command to console with prefix
+                        consoleLines.value.push(`> ${command.value.trim()}`);
+                        await scrollToBottom();
+                        command.value = '';
+                    } catch (error) {
+                        console.error('Error sending command:', error);
+                        consoleLines.value.push(`Error sending command: ${error.message}`);
+                        await scrollToBottom();
+                    }
+                };
+
+                onMounted(() => {
+                    setupEventSource();
+                });
+
+                onBeforeUnmount(() => {
+                    if (eventSource.value) {
+                        eventSource.value.close();
+                        eventSource.value = null;
+                    }
+                    if (reconnectTimeout.value) {
+                        clearTimeout(reconnectTimeout.value);
+                    }
+                });
+
+                return {
+                    // ... existing return values ...
+                    consoleLines,
+                    command,
+                    consoleOutput,
+                    sendCommand,
+                    isConnected
+                };
+            }
+        }).mount('#app');
+        </script>
+    </body>
+</html>
