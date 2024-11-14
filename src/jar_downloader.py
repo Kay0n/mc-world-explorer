@@ -1,4 +1,3 @@
-from datetime import datetime
 import os
 import requests
 
@@ -8,7 +7,6 @@ VERSION_MANIFEST_URL = "https://launchermeta.mojang.com/mc/game/version_manifest
 class JarDownloader:
     def __init__(self, ):
         self.manifest_cache = None
-        self.manifest_cache_time = None
 
 
 
@@ -18,7 +16,6 @@ class JarDownloader:
             response = requests.get(VERSION_MANIFEST_URL)
             response.raise_for_status()
             self.manifest_cache = response.json()
-            self.manifest_cache_time = datetime.now()
         
         return self.manifest_cache
 
@@ -44,13 +41,7 @@ class JarDownloader:
             }
         raise ValueError(f"No server download found for version {mc_version}")
 
-    # def verify_jar(self, jar_path, expected_sha1):
-    #     """Verify the SHA1 hash of a downloaded JAR file"""
-    #     sha1_hash = hashlib.sha1()
-    #     with open(jar_path, "rb") as f:
-    #         for chunk in iter(lambda: f.read(4096), b""):
-    #             sha1_hash.update(chunk)
-    #     return sha1_hash.hexdigest() == expected_sha1
+
 
     def download_if_missing(self, mc_version, download_dir, redownload=False) -> str:
         """Downloads jar to specified dir."""
