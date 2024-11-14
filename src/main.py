@@ -11,8 +11,13 @@ SAVES_DIR = os.path.join(BASE_DIR, "saves")
 SERVER_JARS_DIR = os.path.join(BASE_DIR, "server-jars")
 SERVER_DIR = os.path.join(BASE_DIR, "server")
 
-
-load_dotenv(BASE_DIR)
+# get env vars
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
+WEB_PORT = os.getenv("MWE_WEB_PORT")
+AUTH_PASSWORD = os.getenv("MWE_AUTH_PASSWORD")
+SESSION_SECRET_KEY = os.getenv("MWE_SESSION_SECRET_KEY")
+if not WEB_PORT or not AUTH_PASSWORD or not SESSION_SECRET_KEY:
+    raise ValueError("Required Enviroment vars missing")
 
 
 os.makedirs(SAVES_DIR, exist_ok=True)
@@ -21,14 +26,14 @@ os.makedirs(SERVER_DIR, exist_ok=True)
 
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SESSION_SECRET_KEY")
+app.secret_key = SESSION_SECRET_KEY
 save_manager = SaveManager(SAVES_DIR)
 
 
 # allow blueprints to access config options 
 app.config['SAVE_MANAGER'] = save_manager
 app.config["MC_SERVER"] = MinecraftServer(SERVER_DIR, SERVER_JARS_DIR, save_manager)
-app.config["AUTH_PASSWORD"] = os.getenv("AUTH_PASSWORD") 
+app.config["AUTH_PASSWORD"] = AUTH_PASSWORD
 
 
 # avoid conflicts with vue templating
@@ -53,4 +58,4 @@ def index():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(port=WEB_PORT)
